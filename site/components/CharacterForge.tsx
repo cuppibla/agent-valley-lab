@@ -4,10 +4,13 @@ export type Turn = {
   lookId?: string; op: "equip" | "unequip"; item: string; src: string };
 
 export default function CharacterForge({
-  heroSrc, heroName = "Mochi", anchor = "canon", equipped, history, busy = false,
+  heroSrc, heroName = "Mochi", anchor = "canon", equipped, history, busy = false, onRemove,
 }: {
   heroSrc?: string; heroName?: string; anchor?: "canon" | "latest";
   equipped: string[]; history: Turn[]; busy?: boolean;
+  // Taking something off is a BUTTON, not a sentence — there is nothing to interpret,
+  // so nothing needs a model. The request box and this ✕ sit on the same screen on purpose.
+  onRemove?: (item: string) => void;
 }) {
   const off = anchor === "latest";
   const ring = off ? "var(--rose)" : "var(--gold)";
@@ -44,11 +47,18 @@ export default function CharacterForge({
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 26, marginBottom: 12 }}>
         {equipped.length === 0
-          ? <span style={{ fontSize: 12.5, color: "var(--faint)" }}>tap an adornment ↑</span>
+          ? <span style={{ fontSize: 12.5, color: "var(--faint)" }}>ask for something ↑</span>
           : equipped.map((it) => (
-            <span key={it} style={{ fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 999,
+            <span key={it} style={{ display: "inline-flex", alignItems: "center", gap: 5,
+              fontSize: 12, fontWeight: 600, padding: "3px 6px 3px 10px", borderRadius: 999,
               background: "rgba(111,199,173,.16)", color: "var(--mint)", border: "1px solid rgba(111,199,173,.4)" }}>
               {it}
+              {onRemove && (
+                <button disabled={busy} onClick={() => onRemove(it)} title={`take off ${it}`}
+                  style={{ border: "none", background: "transparent", color: "var(--mint)",
+                    cursor: busy ? "default" : "pointer", fontSize: 13, lineHeight: 1,
+                    padding: "0 2px", opacity: busy ? .4 : .75 }}>✕</button>
+              )}
             </span>
           ))}
       </div>

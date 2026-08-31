@@ -86,10 +86,10 @@ export default function Grove() {
                                         label: `turn ${i + 1}` }))];
   }
 
-  async function send(text?: string) {
+  async function send(text?: string, op: "equip" | "unequip" = "equip") {
     const msg = (text ?? request).trim();
     if (busy || !claimed || !msg) return;
-    const outfit = [...equipped, msg];
+    const outfit = op === "unequip" ? equipped.filter((x) => x !== msg) : [...equipped, msg];
     setBusy(true); setErr(null); setFinished(false);
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 60000);
@@ -99,8 +99,10 @@ export default function Grove() {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({
           session_id: sessionId,
-          request: msg,                       // ← the agent reads this and picks the tool
-          item: msg, op: "equip", outfit,
+          // The agent reads this and picks the tool. Removing is phrased for it too —
+          // the tool is the same one either way; only the sentence differs.
+          request: op === "unequip" ? `take off ${msg}` : msg,
+          item: msg, op, outfit,
           history_ids: history.map((h, i) => h.lookId ?? `look_${i}`),
           canon_id: canonId, canon: claimed.src,
           reference_id: picked.id, reference: picked.src,
@@ -112,9 +114,9 @@ export default function Grove() {
       if (res.image) {
         setHero(res.image);
         setEquipped(outfit);
-        setRequest("");
+        if (op === "equip") setRequest("");
         const nextId = res.look_id ?? `look_${history.length}`;
-        setHistory((h) => [...h, { op: "equip", item: msg, src: res.image, lookId: nextId }]);
+        setHistory((h) => [...h, { op, item: msg, src: res.image, lookId: nextId }]);
         setRefId(identityLock ? canonId : nextId);   // unlocked → the strip follows you forward
         const tn = history.length;
         setEvents((e) => [...e, ...((res.events || []) as TraceEvent[])
@@ -198,19 +200,25 @@ export default function Grove() {
               </button>
             </div>
             <div style={{ display: "flex", gap: 7, marginTop: 10, flexWrap: "wrap" }}>
-              {SUGGESTIONS.map((s) => (
-                <button key={s.label} disabled={busy} onClick={() => setRequest(s.label)}
-                  title={`writes “${s.label}” into the box`}
-                  style={{ display: "flex", alignItems: "center", gap: 6,
-                    padding: "4px 11px 4px 5px", borderRadius: 12, fontSize: 12.5, fontWeight: 600,
-                    cursor: busy ? "default" : "pointer", border: "1.5px solid var(--gold)",
-                    background: "rgba(255,247,225,.9)", color: "var(--gold-deep)",
-                    opacity: busy ? .55 : 1 }}>
-                  <img src={s.icon} alt="" width={22} height={22}
-                    style={{ borderRadius: 7, display: "block" }} />
-                  {s.label}
-                </button>
-              ))}
+              {SUGGESTIONS.map((s) => {
+                const worn = equipped.includes(s.label);
+                return (
+                  <button key={s.label} disabled={busy} onClick={() => setRequest(s.label)}
+                    title={worn ? `already on — ✕ it below to take it off`
+                                : `writes “${s.label}” into the box`}
+                    style={{ display: "flex", alignItems: "center", gap: 6,
+                      padding: "4px 11px 4px 5px", borderRadius: 12, fontSize: 12.5, fontWeight: 600,
+                      cursor: busy ? "default" : "pointer",
+                      border: worn ? "1.5px solid var(--mint)" : "1.5px solid var(--gold)",
+                      background: worn ? "rgba(111,199,173,.16)" : "rgba(255,247,225,.9)",
+                      color: worn ? "var(--mint)" : "var(--gold-deep)",
+                      opacity: busy ? .55 : 1 }}>
+                    <img src={s.icon} alt="" width={22} height={22}
+                      style={{ borderRadius: 7, display: "block", opacity: worn ? .8 : 1 }} />
+                    {s.label}{worn ? " ✓" : ""}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -254,7 +262,8 @@ export default function Grove() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "stretch" }}>
             <CharacterForge heroSrc={hero || claimed?.src} heroName={claimed?.name}
-              anchor={identityLock ? "canon" : "latest"} equipped={equipped} history={history} busy={busy} />
+              anchor={identityLock ? "canon" : "latest"} equipped={equipped} history={history}
+              busy={busy} onRemove={(it) => send(it, "unequip")} />
             <RuntimeInspector events={events} />
           </div>
 
