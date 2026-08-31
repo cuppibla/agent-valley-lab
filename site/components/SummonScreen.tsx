@@ -11,7 +11,10 @@ const EXAMPLES = [
 ];
 const NAMES = ["Mochi", "Pip", "Nimbus", "Sora", "Bao", "Yuki"];
 
-export default function SummonScreen({ onClaim }: { onClaim: (name: string, src: string) => void }) {
+export default function SummonScreen(
+  { onClaim }: { onClaim: (name: string, src: string, id: string, sessionId: string) => void },
+) {
+  const [sessionId, setSessionId] = useState("");
   const [desc, setDesc] = useState("");
   const [species, setSpecies] = useState<string[]>([]);
   const [status, setStatus] = useState<"idle" | "summoning" | "done">("idle");
@@ -30,6 +33,7 @@ export default function SummonScreen({ onClaim }: { onClaim: (name: string, src:
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ description }),
     }).then((r) => r.json()).catch(() => ({ candidates: [] }));
+    if (res.session_id) setSessionId(res.session_id);   // the agent's session — /adorn reuses it
     const got: Cand[] = res.candidates || [];
     setCands(got);
     if (got.length === 1) setPicked(got[0].id);   // nothing to choose between
@@ -120,7 +124,8 @@ export default function SummonScreen({ onClaim }: { onClaim: (name: string, src:
               <button onClick={() => setName(NAMES[Math.floor(Math.random() * NAMES.length)])}
                 style={{ padding: "8px 10px", borderRadius: 10, border: "1px solid var(--line)",
                   background: "rgba(255,255,255,.6)", cursor: "pointer" }}>🎲</button>
-              <button onClick={() => onClaim(name || "Mochi", cands.find((c) => c.id === picked)!.src)}
+              <button onClick={() => onClaim(name || "Mochi", cands.find((c) => c.id === picked)!.src,
+                                     picked!, sessionId)}
                 style={{ padding: "9px 18px", borderRadius: 11, border: "none", fontWeight: 600,
                   background: "linear-gradient(180deg,#ffd98a,#e6c069)", cursor: "pointer", color: "#5a3d10" }}>
                 Claim ✦

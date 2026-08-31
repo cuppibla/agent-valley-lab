@@ -1,6 +1,7 @@
 "use client";
 
-export type Turn = { op: "equip" | "unequip"; item: string; src: string };
+export type Turn = {
+  lookId?: string; op: "equip" | "unequip"; item: string; src: string };
 
 export default function CharacterForge({
   heroSrc, heroName = "Mochi", anchor = "canon", equipped, history, busy = false,

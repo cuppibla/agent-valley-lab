@@ -40,7 +40,7 @@ async def before_model(callback_context, llm_request) -> Optional[LlmResponse]:
         llm_request.append_instructions(
             [f"Active character sheet — stay on it: {sheet['description']}"])
     emit(type=TraceEventType.MODEL_CALL, hook="before_model",
-         label="inject character_sheet")
+         label="inject character_sheet" if sheet.get("description") else "no sheet yet")
     return None
 
 
@@ -52,18 +52,47 @@ def _resolve_reference(state) -> tuple[str, str]:
     return state.get("character_ref", "unpinned"), "canon"
 
 
+def _apply_identity_lock(state) -> tuple[str, Optional[bytes], str]:
+    """The valley's request UI lets the traveler PICK which render to work from.
+    Identity lock decides whether that pick is honoured or overruled.
+
+    Returns (reference_seed, reference_png, trace_label).
+
+    This is the whole of chapter 5: the pick is a request, the lock is a rule.
+    """
+    canon = state.get("character_ref", "unpinned")
+    canon_png = state.get("character_ref_png")
+    picked = state.get("requested_reference") or canon
+    picked_png = state.get("requested_reference_png") or canon_png
+
+    if state.get("identity_lock", True):
+        state["anchor_mode"] = "canon"          # _outfit_instruction reads this
+        label = (f"identity lock → overruled {picked}, anchored to {canon}"
+                 if picked != canon else f"identity lock → {canon}")
+        return canon, canon_png, label
+
+    state["anchor_mode"] = "latest"
+    return picked, picked_png, f"lock off → honoured {picked}"
+
+
 async def before_tool(tool, args: dict[str, Any], tool_context) -> Optional[dict]:
     """Pin the reference for generate_look — the control action of the week."""
     if tool.name == "generate_look":
         state = tool_context.state
-        seed, mode = _resolve_reference(state)
-        state["temp:active_reference"] = seed  # the tool reads this (seed)
-        # the real image pin: canon → the claimed familiar's png; latest → the last output's png
-        state["temp:active_reference_png"] = (
-            state.get("_last_output_png") if mode == "latest" else state.get("character_ref_png"))
-        emit(type=TraceEventType.TOOL_CALL, hook="before_tool",
-             label=f"ref_pin → {mode} ({seed})",
-             payload={"anchored_to": mode, "reference_seed": seed})
+        if "requested_reference" in state:          # the valley's request UI
+            seed, png, label = _apply_identity_lock(state)
+            mode = state["anchor_mode"]
+        else:                                        # adk web / character_forge
+            seed, mode = _resolve_reference(state)
+            png = (state.get("_last_output_png") if mode == "latest"
+                   else state.get("character_ref_png"))
+            label = f"ref_pin → {mode} ({seed})"
+        state["temp:active_reference"] = seed       # the tool reads this (seed)
+        state["temp:active_reference_png"] = png    # the real image pin
+        emit(type=TraceEventType.TOOL_CALL, hook="before_tool", label=label,
+             payload={"anchored_to": mode, "reference_seed": seed,
+                      "requested": state.get("requested_reference"),
+                      "identity_lock": state.get("identity_lock", True)})
     return None
 
 
