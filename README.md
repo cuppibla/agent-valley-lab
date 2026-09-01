@@ -13,6 +13,9 @@ in this repo.
 
 ![Agent Valley](docs/valley.png)
 
+📕 **The slides:** [Agent 101 — ep1](docs/agent-101-ep1.pdf) (29 pages) — the deck
+that goes with this lab, from the Agent 101 Live week-one session.
+
 ## Run it
 
 ```bash
