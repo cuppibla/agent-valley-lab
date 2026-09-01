@@ -197,7 +197,8 @@ async def generate_look(form: str, tool_context: ToolContext) -> dict:
     if not reference_png:
         raise ValueError(
             "no reference image to work from — this familiar's canon never arrived. "
-            "Press \u21ba start over, or summon again.")
+            "Press \u27f2 summon again to claim a fresh one "
+            "(\u21ba start over keeps this familiar, so it will not help).")
     instruction = _outfit_instruction(state)  # multiturn outfit prompt, or None for single-form
     png, meta = render_look(sheet=sheet, form=form, reference_seed=reference_seed,
                             reference_png=reference_png, instruction=instruction)

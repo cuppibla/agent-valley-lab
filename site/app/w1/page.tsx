@@ -72,6 +72,17 @@ export default function Grove() {
     setPhase("forge");
   }
 
+  // The only way out of a familiar that cannot be dressed — an old save whose canon
+  // is a replay path, say. startOver keeps the creature; this one lets it go, which
+  // is why it is always on screen and startOver is not.
+  function newFamiliar() {
+    updateSave({ name: "", origin: undefined, portrait: undefined, outfit: [] });
+    setClaimed(null); setHero(""); setEquipped([]); setHistory([]); setEvents([]);
+    setErr(null); setFinished(false); setRestored(false);
+    setSessionId(""); setCanonId("canon"); setRefId("canon"); setRequest("");
+    setPhase("summon");
+  }
+
   function startOver() {
     setEquipped([]); setHistory([]); setEvents([]); setErr(null); setFinished(false);
     setRefId(canonId); setRequest("");
@@ -260,7 +271,12 @@ export default function Grove() {
             {turns >= 2 && !busy && !finished && (
               <button className="rune on" onClick={finish}>✨ finish</button>
             )}
-            {turns > 0 && !busy && <button className="rune" onClick={startOver}>↺ start over</button>}
+            {(turns > 0 || equipped.length > 0) && !busy && (
+              <button className="rune" onClick={startOver}>↺ start over</button>
+            )}
+            {/* Never gated on progress: a familiar whose every turn FAILS has no
+                progress, and that is exactly when you need to get out of it. */}
+            {!busy && <button className="rune" onClick={newFamiliar}>⟲ summon again</button>}
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, alignItems: "stretch" }}>
