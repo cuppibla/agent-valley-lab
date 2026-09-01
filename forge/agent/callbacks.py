@@ -46,11 +46,17 @@ async def before_model(callback_context, llm_request) -> Optional[LlmResponse]:
 
 
 def _resolve_reference(state) -> tuple[str, str]:
-    """Return (reference_seed, anchor_mode). This IS the drift A/B."""
+    """Return (reference_seed, anchor_mode). This IS the drift A/B.
+
+    Canon order: the LOCKED reference first, then the provisional pin
+    `cast_candidates` left behind. "unpinned" now means what it says — nothing
+    was ever summoned — instead of "summoned but never locked", which is the
+    hole a look used to fall through and come back a different animal.
+    """
     mode = state.get("anchor_mode", "canon")
     if mode == "latest" and state.get("_last_output"):
         return state["_last_output"], "latest"
-    return state.get("character_ref", "unpinned"), "canon"
+    return state.get("character_ref") or state.get("provisional_ref") or "unpinned", "canon"
 
 
 def _apply_identity_lock(state) -> tuple[str, Optional[bytes], str]:
@@ -86,7 +92,8 @@ async def before_tool(tool, args: dict[str, Any], tool_context) -> Optional[dict
         else:                                        # adk web / character_forge
             seed, mode = _resolve_reference(state)
             png = (state.get("temp:_last_output_png") if mode == "latest"
-                   else state.get("temp:character_ref_png"))
+                   else state.get("temp:character_ref_png")
+                        or state.get("temp:provisional_ref_png"))
             if png is None:
                 # A new turn: the temp tier is gone, the artifact is not. The
                 # seed IS the artifact name, so read the bytes back off it.

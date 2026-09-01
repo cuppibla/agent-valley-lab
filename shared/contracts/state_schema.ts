@@ -40,7 +40,9 @@ export interface StateKeyDef {
 export const SCHEMA: StateKeyDef[] = [
   // ── W1 · Control — Character Forge ────────────────────────────────────
   { key: "temp:candidates", tier: "temp", week: 1, value_type: "ArtifactRef[]", mutability: "free", status: "active",
-    description: "The 4 cast candidates. Not locked in — gone when the turn ends." },
+    description: "The cast candidates. Not locked in — gone when the turn ends." },
+  { key: "provisional_ref", tier: "session", week: 1, value_type: "ArtifactRef", mutability: "free", status: "active",
+    description: "What cast pinned before anyone locked: unnamed, overridable, and the reason a look can never render from nothing." },
   { key: "character_ref", tier: "session", week: 1, value_type: "ArtifactRef", mutability: "free", status: "active",
     description: "The canonical reference art. The anchor every generation is pinned to." },
   { key: "character_sheet", tier: "session", week: 1, value_type: "CharacterSheet", mutability: "free", status: "active",
