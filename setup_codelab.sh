@@ -150,23 +150,37 @@ fi
 
 # The lab reads exactly these three. The credential is your gcloud identity,
 # so there is nothing to paste into this file and nothing to leak out of it.
+#
+# A re-run rewrites those three and keeps everything else. If you added your
+# own settings to .env by hand, this script is not going to eat them.
+ENV_KEPT=""
+if [ -f .env ]; then
+    ENV_KEPT="$(grep -vE '^[[:space:]]*(GOOGLE_GENAI_USE_VERTEXAI|GOOGLE_CLOUD_PROJECT|GOOGLE_CLOUD_LOCATION)[[:space:]]*=' .env || true)"
+fi
+
 {
-  echo "GOOGLE_GENAI_USE_VERTEXAI=TRUE"
+  echo "GOOGLE_GENAI_USE_VERTEXAI=True"
   echo "GOOGLE_CLOUD_PROJECT=$PROJECT"
   # global, not a region: Gemini here runs on dynamic shared quota, so one
   # busy region can 429 through no fault of the student. global draws on
   # capacity across regions. ADK loads .env OVER shell exports, so this
   # file is what actually decides the endpoint.
   echo "GOOGLE_CLOUD_LOCATION=global"
+  if [ -n "$ENV_KEPT" ]; then
+      printf '%s\n' "$ENV_KEPT"
+  fi
 } > .env
 tick "wrote .env — Vertex AI on project $PROJECT"
+if [ -n "$ENV_KEPT" ]; then
+    info "kept the other lines that were already in .env"
+fi
 
 # ── 4 · prove the model answers ──────────────────────────────────────────────
 # The only check worth having: a real call to a real model over the credentials
 # this lab will actually use. Everything above is a guess until this line ticks.
 say "4 · Live check"
 
-export GOOGLE_GENAI_USE_VERTEXAI="TRUE"
+export GOOGLE_GENAI_USE_VERTEXAI="True"
 export GOOGLE_CLOUD_PROJECT="$PROJECT"
 export GOOGLE_CLOUD_LOCATION="global"
 

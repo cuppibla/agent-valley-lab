@@ -51,26 +51,39 @@ fi
 # ── 1 · reuse the project from a previous run ────────────────────────────────
 # The point of ~/project_id.txt is that a hiccup halfway through does not cost
 # you a second project. Read it before generating anything.
-project_is_usable() {
-    local pid="$1"
-    gcloud projects describe "$pid" --format='value(projectId)' >/dev/null 2>&1 || return 1
-    [ "$(gcloud billing projects describe "$pid" \
-            --format='value(billingEnabled)' 2>/dev/null)" = "True" ] || return 1
-    return 0
+project_exists() {
+    gcloud projects describe "$1" --format='value(projectId)' >/dev/null 2>&1
 }
+
+project_has_billing() {
+    [ "$(gcloud billing projects describe "$1" \
+            --format='value(billingEnabled)' 2>/dev/null)" = "True" ]
+}
+
+# Set when the recorded project is real but never got its billing linked — a
+# half-built project from an interrupted run. That one is worth rescuing, so
+# section 3 adopts it and section 4 links billing to it, instead of walking
+# away and leaving you with two empty projects.
+ADOPT_PROJECT=""
 
 if [ -f "$PROJECT_FILE" ]; then
     EXISTING="$(tr -d '[:space:]' < "$PROJECT_FILE" || true)"
     if [ -n "$EXISTING" ]; then
         info "Found $PROJECT_FILE → $EXISTING"
-        if project_is_usable "$EXISTING"; then
-            gcloud config set project "$EXISTING" >/dev/null 2>&1
-            tick "reusing $EXISTING (exists, billing linked)"
-            say "Project ready: $EXISTING"
-            printf '  Next:  ./setup_codelab.sh\n\n'
-            exit 0
+        if project_exists "$EXISTING"; then
+            if project_has_billing "$EXISTING"; then
+                gcloud config set project "$EXISTING" >/dev/null 2>&1 \
+                    || warn "could not select $EXISTING — run: gcloud config set project $EXISTING"
+                tick "reusing $EXISTING (exists, billing linked)"
+                say "Project ready: $EXISTING"
+                printf '  Next:  ./setup_codelab.sh\n\n'
+                exit 0
+            fi
+            ADOPT_PROJECT="$EXISTING"
+            info "$EXISTING exists but has no billing — linking billing to it"
+        else
+            warn "$EXISTING is gone — creating a fresh project."
         fi
-        warn "$EXISTING is missing or has no billing — creating a fresh project."
     fi
 fi
 
@@ -138,44 +151,54 @@ tick "billing account: $ACCOUNT_DISPLAY ($ACCOUNT_ID)"
 # retry with a new number before giving up.
 say "2 · Project"
 
-PROJECT_ID=""
-CREATE_ERR=""
-for _ in $(seq 1 "$CREATE_ATTEMPTS"); do
-    CANDIDATE="${PREFIX}$(printf '%04d' $((RANDOM % 10000)))"
-    info "creating $CANDIDATE"
-    if CREATE_ERR="$(gcloud projects create "$CANDIDATE" \
-            --name="Agent Valley" 2>&1)"; then
-        PROJECT_ID="$CANDIDATE"
-        break
-    fi
-    warn "$CANDIDATE was refused, trying another ID"
-done
+if [ -n "$ADOPT_PROJECT" ]; then
+    PROJECT_ID="$ADOPT_PROJECT"
+    tick "adopting $PROJECT_ID"
+else
+    PROJECT_ID=""
+    CREATE_ERR=""
+    for _ in $(seq 1 "$CREATE_ATTEMPTS"); do
+        CANDIDATE="${PREFIX}$(printf '%04d' $((RANDOM % 10000)))"
+        info "creating $CANDIDATE"
+        if CREATE_ERR="$(gcloud projects create "$CANDIDATE" \
+                --name="Agent Valley" 2>&1)"; then
+            PROJECT_ID="$CANDIDATE"
+            break
+        fi
+        warn "$CANDIDATE was refused, trying another ID"
+    done
 
-if [ -z "$PROJECT_ID" ]; then
-    die "Could not create a project." \
-        "gcloud said:" \
-        "" \
-        "$CREATE_ERR" \
-        "" \
-        "Usual causes: you are at your project quota, or your account is in" \
-        "an organization that does not let you create projects." \
-        "" \
-        "Create one by hand instead — it takes a minute:" \
-        "  1. https://console.cloud.google.com/projectcreate" \
-        "  2. give it any name, note the PROJECT ID it assigns" \
-        "  3. link billing:  Billing → Link a billing account" \
-        "  4. tell this lab about it:" \
-        "       echo YOUR_PROJECT_ID > ~/project_id.txt" \
-        "       gcloud config set project YOUR_PROJECT_ID" \
-        "  5. re-run ./setup_project.sh — it will pick that project up"
+    if [ -z "$PROJECT_ID" ]; then
+        die "Could not create a project after $CREATE_ATTEMPTS attempts." \
+            "gcloud said:" \
+            "" \
+            "$CREATE_ERR" \
+            "" \
+            "Usual causes: you are at your project quota, or your account is in" \
+            "an organization that does not let you create projects." \
+            "" \
+            "Create one by hand instead — it takes a minute:" \
+            "  1. https://console.cloud.google.com/projectcreate" \
+            "  2. give it any name, note the PROJECT ID it assigns" \
+            "  3. link billing:  Billing → Link a billing account" \
+            "  4. tell this lab about it:" \
+            "       echo YOUR_PROJECT_ID > ~/project_id.txt" \
+            "       gcloud config set project YOUR_PROJECT_ID" \
+            "  5. re-run ./setup_project.sh — it will pick that project up"
+    fi
+
+    tick "created $PROJECT_ID"
 fi
 
-tick "created $PROJECT_ID"
-
 # ── 4 · link billing, record, and select ─────────────────────────────────────
+# Record the ID the moment the project exists, before anything below it can
+# fail. Every die() past this point tells you to re-run, and a re-run can only
+# keep that promise if the ID is already on disk.
+printf '%s\n' "$PROJECT_ID" > "$PROJECT_FILE"
+
 if ! LINK_ERR="$(gcloud billing projects link "$PROJECT_ID" \
         --billing-account="$ACCOUNT_ID" 2>&1)"; then
-    die "Created $PROJECT_ID but could not link billing to it." \
+    die "Could not link billing to $PROJECT_ID." \
         "gcloud said:" \
         "" \
         "$LINK_ERR" \
@@ -186,10 +209,19 @@ if ! LINK_ERR="$(gcloud billing projects link "$PROJECT_ID" \
 fi
 tick "billing linked"
 
-# Write this before the readiness wait: if the wait times out, a re-run has to
-# find this project rather than create a third one.
-printf '%s\n' "$PROJECT_ID" > "$PROJECT_FILE"
-gcloud config set project "$PROJECT_ID" >/dev/null 2>&1
+if ! SELECT_ERR="$(gcloud config set project "$PROJECT_ID" 2>&1)"; then
+    die "Linked billing to $PROJECT_ID, but could not make it the active project." \
+        "gcloud said:" \
+        "" \
+        "$SELECT_ERR" \
+        "" \
+        "$PROJECT_ID itself is fine, and it is already recorded in" \
+        "$PROJECT_FILE. Select it by hand:" \
+        "" \
+        "  gcloud config set project $PROJECT_ID" \
+        "" \
+        "Then re-run ./setup_project.sh — it will reuse $PROJECT_ID."
+fi
 tick "recorded in $PROJECT_FILE and set as the active gcloud project"
 
 # ── 5 · wait for the project to actually be allowed to serve ─────────────────
