@@ -11,6 +11,7 @@ Run:  bash valley.sh        (boots this on 8100, and the app on 3200)
 from __future__ import annotations
 
 import base64
+import logging
 import sys
 import uuid
 from pathlib import Path
@@ -180,10 +181,21 @@ async def cast(req: Request) -> dict:
 
 
 def _decode(data_url_or_b64: str) -> bytes | None:
+    """Bytes out of a data URL, or None if there is nothing usable in there.
+
+    The prefix is whatever `_shrink` wrote — `data:image/jpeg;base64,` — not the png
+    this once assumed. Bad padding raises, so a half-written save used to take the
+    whole request down instead of just losing its reference.
+    """
     if not data_url_or_b64:
         return None
-    raw = data_url_or_b64.split(",", 1)[-1]  # strip data:image/png;base64,
-    return _b64.b64decode(raw)
+    raw = data_url_or_b64.split(",", 1)[-1]
+    try:
+        return _b64.b64decode(raw) or None
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "reference did not decode — %d chars, starts %r", len(raw), raw[:24])
+        return None
 
 
 @app.post("/adorn")
@@ -219,10 +231,17 @@ async def adorn(req: Request) -> dict:
         "app:style_rules": {"banned_terms": ["bootleg", "logo"], "must_show_face": True},
     }
 
-    results, called = await _run("dress", sid, request_text, seed)
-    if not called:
-        results, called = await _run("dress", sid,
-                                     f"Call generate_look now with: {item}", seed)
+    try:
+        results, called = await _run("dress", sid, request_text, seed)
+        if not called:
+            results, called = await _run("dress", sid,
+                                         f"Call generate_look now with: {item}", seed)
+    except Exception as exc:
+        # A tool that throws used to surface as a bare 502 and a wall of traceback in
+        # the terminal. Hand the reason to the UI instead — it has a place to show it.
+        logging.getLogger(__name__).exception("adorn failed")
+        return {"mode": "live-agent", "session_id": sid,
+                "error": f"{type(exc).__name__}: {exc}"[:300]}
 
     img, look_id = None, None
     for r in results:

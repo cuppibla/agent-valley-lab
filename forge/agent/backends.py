@@ -14,12 +14,15 @@ Two implementations behind one protocol:
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import struct
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Protocol
+
+logger = logging.getLogger(__name__)
 
 # Curated example art (Annie's favourites) — every fresh summon is conditioned on
 # these so live generations match that exact adorable low-poly charm and eye style,
@@ -40,6 +43,55 @@ def _style_refs() -> list[bytes]:
                     pass
         _STYLE_REF_CACHE = out
     return _STYLE_REF_CACHE
+
+
+_MAGIC = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"),
+          (b"GIF87a", "image/gif"), (b"GIF89a", "image/gif"))
+
+
+def sniff_mime(data: bytes) -> Optional[str]:
+    """The real type of these bytes, or None if they are not an image we know.
+
+    The reference the browser sends back is a JPEG — `service._shrink` makes it one —
+    so labelling every blob "image/png" was always a lie. Vertex sniffs and forgives
+    it; say the true thing anyway, and use this as the gate for whether the bytes are
+    an image at all.
+    """
+    mime = None
+    for magic, m in _MAGIC:
+        if data.startswith(magic):
+            mime = m
+            break
+    if mime is None and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        mime = "image/webp"
+    if mime is None:
+        return None
+    # A magic number only proves the header. A TRUNCATED jpeg still starts ff d8 ff
+    # and still reaches the model as `400 INVALID_ARGUMENT: Provided image is not
+    # valid` — so decode it here, where we can say which image and how big.
+    try:
+        from io import BytesIO
+        from PIL import Image
+        Image.open(BytesIO(data)).load()
+    except Exception:
+        return None
+    return mime
+
+
+def as_image_part(data: bytes, where: str):
+    """A Part for these bytes, or None with a loud log line if they are not an image.
+
+    A bad reference used to reach the model and come back as a bare
+    `400 INVALID_ARGUMENT: Provided image is not valid`, which says nothing about
+    which image, how big, or where it came from.
+    """
+    from google.genai import types
+    mime = sniff_mime(data) if data else None
+    if not mime:
+        head = data[:12].hex() if data else "(empty)"
+        logger.warning("%s: not a usable image — %d bytes, starts %s", where, len(data or b""), head)
+        return None
+    return types.Part(inline_data=types.Blob(mime_type=mime, data=data))
 
 
 @dataclass
@@ -122,8 +174,16 @@ class NanoBananaBackend:
                  "friendly face, warm pastel colours, soft gradient light, sitting on a small glowing "
                  "cloud, plain pastel background, centered, charming and adorable. No text, no logos.")
         contents: list = []
-        if reference_png:  # pin: send the locked reference image every turn
-            contents.append(types.Part(inline_data=types.Blob(mime_type="image/png", data=reference_png)))
+        ref_part = as_image_part(reference_png, "reference image") if reference_png else None
+        if reference_png and ref_part is None:
+            # Falling through to the else-branch here would quietly re-summon a
+            # BRAND-NEW creature instead of dressing this one — a worse failure than
+            # stopping, because it looks like it worked.
+            raise ValueError(
+                f"the reference image is not a usable image "
+                f"({len(reference_png)} bytes, starts {reference_png[:12].hex()})")
+        if ref_part:  # pin: send the locked reference image every turn
+            contents.append(ref_part)
             edit = instruction or (
                 f"The EXACT same familiar as the reference image — identical face, colours, markings "
                 f"and low-poly style — now with {form}. Keep the identity and the style unchanged.")
@@ -131,8 +191,10 @@ class NanoBananaBackend:
         else:
             # condition every fresh summon on the curated example art so the charm + eye
             # style matches those exactly, then vary only the species/details from `sheet`.
-            for ref in _style_refs():
-                contents.append(types.Part(inline_data=types.Blob(mime_type="image/png", data=ref)))
+            for i, ref in enumerate(_style_refs()):
+                part = as_image_part(ref, f"style ref {i}")
+                if part:
+                    contents.append(part)
             contents.append(
                 f"Study the art style of the reference images above — that same adorable cute low-poly "
                 f"look, the same big soft eyes, the same pastel palette and glowing cloud. Now create a "
