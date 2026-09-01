@@ -66,15 +66,28 @@ _runners = {"summon": Runner(app_name=APP, agent=summoner, session_service=_sess
                             artifact_service=_artifacts)}
 
 
+async def _ensure_session(sid: str | None) -> str:
+    """Hand back a session id that actually exists.
+
+    ADK reads a FALSY session_id as "mint one for me", so `create_session(session_id="")`
+    quietly files the session under a fresh uuid — and the runner, still asked for "",
+    raises `SessionNotFoundError: Session not found:` with nothing after the colon.
+    A missing id has to become a real one before anything downstream sees it.
+    """
+    sid = (sid or "").strip() or f"s-{uuid.uuid4().hex[:10]}"
+    if await _sessions.get_session(app_name=APP, user_id="traveler", session_id=sid) is None:
+        await _sessions.create_session(app_name=APP, user_id="traveler", session_id=sid)
+    return sid
+
+
 async def _run(lane: str, sid: str, text: str, seed: dict | None = None) -> tuple[list[dict], bool]:
     """Drive one lane. Returns (the tools' return values, did_call_tool).
 
     `seed` is written straight into session state before the run — that is how the
     browser's picked reference and the identity-lock toggle reach `before_tool`.
     """
+    sid = await _ensure_session(sid)
     sess = await _sessions.get_session(app_name=APP, user_id="traveler", session_id=sid)
-    if sess is None:
-        sess = await _sessions.create_session(app_name=APP, user_id="traveler", session_id=sid)
     if seed:
         # get_session hands back a copy, so mutating sess.state is a no-op. A state
         # delta on an event is the supported way to write into a live session.
@@ -136,7 +149,7 @@ async def cast(req: Request) -> dict:
     """
     body = await req.json()
     description = body.get("description", "") or "a cute mystical familiar"
-    sid = body.get("session_id") or f"s-{uuid.uuid4().hex[:10]}"
+    sid = await _ensure_session(body.get("session_id"))
     tools.set_backend(get_backend())
 
     sink = ListSink()
@@ -183,7 +196,7 @@ async def adorn(req: Request) -> dict:
     """
     body = await req.json()
     request_text = body.get("request") or f"give it {body.get('item', 'a crown')}"
-    sid = body.get("session_id")
+    sid = await _ensure_session(body.get("session_id"))
     outfit = body.get("outfit", [])
     op = body.get("op", "equip")
     item = body.get("item") or "an accessory"

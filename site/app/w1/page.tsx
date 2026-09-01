@@ -111,6 +111,9 @@ export default function Grove() {
         signal: ctl.signal,
       });
       const res = await r.json();
+      // The service mints one when ours is blank (a restore, or a summon that never
+      // handed one back). Adopt it, so the next turn lands in the same session.
+      if (res.session_id && res.session_id !== sessionId) setSessionId(res.session_id);
       if (res.image) {
         setHero(res.image);
         setEquipped(outfit);
