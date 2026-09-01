@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import DialogueBox from "@/components/DialogueBox";
+import { rememberSessionId } from "@/lib/session";
 
 type Cand = { id: string; src: string };
 const SPECIES = ["fox", "cat", "owl", "dragon", "deer", "bunny", "bear", "dog"];
@@ -34,7 +35,9 @@ export default function SummonScreen(
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ description }),
     }).then((r) => r.json()).catch(() => ({ candidates: [] }));
-    if (res.session_id) setSessionId(res.session_id);   // the agent's session — /adorn reuses it
+    // The agent's session — /adorn reuses it. Parked in sessionStorage too, so a
+    // reload between here and the forge doesn't strand the next dress-up turn.
+    if (res.session_id) setSessionId(rememberSessionId(res.session_id));
     const got: Cand[] = res.candidates || [];
     setCands(got);
     if (got.length === 1) setPicked(got[0].id);   // nothing to choose between
