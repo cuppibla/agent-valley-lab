@@ -75,7 +75,13 @@ SCHEMA: list[StateKeyDef] = [
     StateKeyDef(
         key="temp:candidates", tier=Tier.TEMP, week=1, status="active",
         value_type="list[ArtifactRef]",
-        description="The 4 cast candidates. Not locked in — gone when the turn ends.",
+        description="The cast candidates. Not locked in — gone when the turn ends.",
+    ),
+    StateKeyDef(
+        key="provisional_ref", tier=Tier.SESSION, week=1, status="active",
+        value_type="ArtifactRef",
+        description=("What cast pinned before anyone locked: unnamed, overridable, "
+                     "and the reason a look can never render from nothing."),
     ),
     StateKeyDef(
         key="character_ref", tier=Tier.SESSION, week=1, status="active",

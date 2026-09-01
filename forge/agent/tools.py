@@ -1,9 +1,15 @@
 """The Character Forge tools. Three player actions, three shapes of control.
 
-  cast_candidates — describe a character → its portrait (temp:, thrown away on lock)
+  cast_candidates — describe a character → its portrait, plus a PROVISIONAL pin
+                    (provisional_ref) so a look can never render from nothing.
   lock_candidate  — pick one as canon. A tool that spends NO model: a pure state write.
   generate_look   — transmog: same face, new form. The reference is pinned by the
                     before_tool callback (see callbacks.py) into temp:active_reference.
+
+Two pins, not one. `cast` pins the reference — provisional, unnamed, just enough
+that there is always a face to hold. `lock_candidate` is what makes it canon: it
+names the character and dissolves the candidates. The provisional pin is a floor,
+not a replacement — see callbacks._resolve_reference for the order they resolve in.
 
 The render step is factored into `render_look` so the offline fixture generator
 runs the exact same backend/artifact path the ADK tool runs.
@@ -113,13 +119,27 @@ async def cast_candidates(description: str, tool_context: ToolContext) -> dict:
     tool_context.state["temp:candidates"] = filenames
     tool_context.state["character_sheet"] = {"name": "", "description": description,
                                              "style_notes": ""}
+    # PROVISIONAL PIN. Nothing is canon yet — nobody has picked, nobody has named
+    # it — but a face now exists, so `generate_look` must never render from nothing
+    # again. The name is session-tier because the look comes a TURN later and temp:
+    # dies with the turn; the bytes ride along in temp: for this turn, and after that
+    # before_tool reloads them from the artifact by name. lock_candidate overrides
+    # both (see _resolve_reference): this is a floor, not a decision.
+    tool_context.state["provisional_ref"] = filenames[0]
+    tool_context.state["temp:provisional_ref_png"] = pngs[0][0]
     emit(type=TraceEventType.STATE_DELTA, hook="after_tool",
-         label=f"+ temp:candidates ({len(filenames)})", payload={"count": len(filenames)})
+         label=(f"+ temp:candidates ({len(filenames)})  "
+                f"+ provisional_ref {filenames[0]}"),
+         payload={"count": len(filenames), "provisional_ref": filenames[0]})
     return {"status": "ok", "candidates": filenames, "count": len(filenames)}
 
 
 async def lock_candidate(index: int, name: str, tool_context: ToolContext) -> dict:
     """Lock one candidate as the canonical character. Spends no model — a pure state write.
+
+    `cast_candidates` left a provisional pin behind so a look could never render
+    from nothing. This is the step that makes it CANON: it names the character,
+    writes `character_ref`, and dissolves the candidates. Provisional → decided.
 
     Args:
         index: Which candidate to make canon (0 is the first).
@@ -144,10 +164,14 @@ async def lock_candidate(index: int, name: str, tool_context: ToolContext) -> di
     sheet["name"] = name
     tool_context.state["character_sheet"] = sheet
     tool_context.state["temp:candidates"] = []  # candidates dissolve
+    # the provisional pin has been promoted — blank it so the State tab shows one
+    # anchor, not two. (ADK's State has no delete; "" is the falsy form, the same
+    # way temp:candidates dissolves to [].)
+    tool_context.state["provisional_ref"] = ""
     tool_context.state["look_history"] = []
     emit(type=TraceEventType.STATE_DELTA, hook="after_tool",
          label=(f"+ character_ref {'+ temp:character_ref_png ' if png else ''}"
-                f" − temp:candidates  (0 tok, $0.00)"),
+                f" − temp:candidates  − provisional_ref  (0 tok, $0.00)"),
          payload={"character_ref": ref, "name": name,
                   "reference_bytes": len(png) if png else 0})
     return {"status": "ok", "character_ref": ref, "name": name}
