@@ -7,9 +7,11 @@ This is a ~30 minute hands-on lab. You summon a creature that did not exist,
 dress it up, and watch the state it changed survive a page reload. You edit
 **one line**; everything else you read, run and watch.
 
-▶ **Start here: [CODELAB.md](CODELAB.md)**
+▶ **Start here: [Run it](#run-it).** The written walkthrough that goes with this
+lab is still a draft and lives elsewhere; everything you need to run the thing is
+in this repo.
 
-![Agent Valley](codelab-img/v1-map.png)
+![Agent Valley](docs/valley.png)
 
 ## Run it
 
@@ -45,7 +47,6 @@ the agent on `:8100` and Agent Valley on `:3200`.
 | `grove_flow/agent.py` | the same tool wired as a fixed workflow instead |
 | `forge/agent/` | the finished agent the valley runs on: tools, callbacks, service |
 | `site/` | Agent Valley itself (Next.js) — already built |
-| `codelab-img/` | codelab figures; `src/` holds the diagram SVGs |
 
 The two lab agents import the *same* tools as the app. Nothing here is a toy
 copy — that is the point of the whole lab.
