@@ -16,18 +16,19 @@ export default function SummonScreen(
 ) {
   const [sessionId, setSessionId] = useState("");
   const [desc, setDesc] = useState("");
-  const [species, setSpecies] = useState<string[]>([]);
+  const [species, setSpecies] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "summoning" | "done">("idle");
   const [cands, setCands] = useState<Cand[]>([]);
   const [picked, setPicked] = useState<string | null>(null);
   const [name, setName] = useState("Mochi");
 
-  const toggle = (n: string) =>
-    setSpecies((s) => (s.includes(n) ? s.filter((x) => x !== n) : [...s, n]));
+  // One kind, or none. Picking a second used to ADD to the list, which sent the
+  // forge "a fox or cat or owl" and let the model settle the argument for you.
+  const pick = (n: string) => setSpecies((s) => (s === n ? null : n));
 
   async function summon() {
     setStatus("summoning"); setPicked(null);
-    const kind = species.length ? `a ${species.join(" or ")}` : "";
+    const kind = species ? `${/^[aeiou]/.test(species) ? "an" : "a"} ${species}` : "";
     const description = [kind, desc].filter(Boolean).join(", ") || "a cute animal familiar";
     const res = await fetch("/api/w1/cast", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -57,9 +58,9 @@ export default function SummonScreen(
       {label("PICK A KIND")}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
         {SPECIES.map((n) => {
-          const on = species.includes(n);
+          const on = species === n;
           return (
-            <button key={n} onClick={() => toggle(n)}
+            <button key={n} onClick={() => pick(n)}
               style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 600,
                 padding: "6px 14px 6px 7px", borderRadius: 13, cursor: "pointer", textTransform: "capitalize",
                 border: on ? "2px solid var(--violet)" : "1px solid var(--line)",
