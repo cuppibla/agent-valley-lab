@@ -44,12 +44,25 @@ the agent on `:8100` and Agent Valley on `:3200`.
 | | |
 |---|---|
 | `grove/agent.py` | the agent you edit — 20 lines, one commented-out line |
+| `grove_locked/agent.py` | the finished agent, re-exported so `adk web` lists it too |
 | `grove_flow/agent.py` | the same tool wired as a fixed workflow instead |
 | `forge/agent/` | the finished agent the valley runs on: tools, callbacks, service |
+| `tests/` | offline tests — no model, no key, no network |
 | `site/` | Agent Valley itself (Next.js) — already built |
 
 The two lab agents import the *same* tools as the app. Nothing here is a toy
 copy — that is the point of the whole lab.
+
+## Tests
+
+```bash
+A101_FAKE_IMAGES=1 uv run --frozen python -m unittest discover -s tests -v
+```
+
+Stdlib `unittest`, deliberately: adding a test runner would relock the runtime
+deps this lab pins. They are plain `TestCase`s, so `pytest tests` collects them
+unchanged if you have pytest in your own environment. `A101_FAKE_IMAGES=1`
+forces the offline image backend, so the suite needs no key and no network.
 
 ## The idea
 

@@ -44,6 +44,24 @@ def render_look(*, sheet: str, form: str, reference_seed: str,
     return result.png, meta
 
 
+async def artifact_png(tool_context, filename: str | None) -> bytes | None:
+    """Best-effort: the PNG bytes behind an artifact name, or None.
+
+    The bytes are the anchor — `backends.py` only sends an image to the model
+    when it is handed `reference_png`. State can only ever hold the NAME:
+    session state is persisted as JSON and PNG bytes are not JSON. So the name
+    lives in state and the bytes are fetched back from the artifact store.
+    """
+    if not filename:
+        return None
+    try:
+        part = await tool_context.load_artifact(filename)
+    except Exception:                     # no artifact service, or no such name
+        return None
+    inline = getattr(part, "inline_data", None) if part is not None else None
+    return getattr(inline, "data", None)
+
+
 def _outfit_instruction(state) -> str | None:
     """Build the per-turn edit prompt for the multiturn dress-up.
 
@@ -115,14 +133,23 @@ async def lock_candidate(index: int, name: str, tool_context: ToolContext) -> di
         return {"status": "error", "message": f"index {index} out of range"}
     ref = candidates[index]
     tool_context.state["character_ref"] = ref
+    # The name is the receipt; the BYTES are the anchor. Pin them now, while the
+    # chosen candidate is unambiguous, in the temp tier — they are not JSON, so
+    # they must never reach the persisted state (before_tool reloads them from
+    # the artifact on later turns, when this temp key is long gone).
+    png = await artifact_png(tool_context, ref)
+    if png is not None:
+        tool_context.state["temp:character_ref_png"] = png
     sheet = tool_context.state.get("character_sheet", {})
     sheet["name"] = name
     tool_context.state["character_sheet"] = sheet
     tool_context.state["temp:candidates"] = []  # candidates dissolve
     tool_context.state["look_history"] = []
     emit(type=TraceEventType.STATE_DELTA, hook="after_tool",
-         label=f"+ character_ref  − temp:candidates  (0 tok, $0.00)",
-         payload={"character_ref": ref, "name": name})
+         label=(f"+ character_ref {'+ temp:character_ref_png ' if png else ''}"
+                f" − temp:candidates  (0 tok, $0.00)"),
+         payload={"character_ref": ref, "name": name,
+                  "reference_bytes": len(png) if png else 0})
     return {"status": "ok", "character_ref": ref, "name": name}
 
 
