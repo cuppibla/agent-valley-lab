@@ -16,6 +16,7 @@ from google.adk.models.llm_response import LlmResponse
 from google.genai import types
 
 from .emit import emit
+from .tools import artifact_png
 from shared.contracts.trace_event import TraceEventType
 
 DEFAULT_STYLE_RULES = {
@@ -84,9 +85,13 @@ async def before_tool(tool, args: dict[str, Any], tool_context) -> Optional[dict
             mode = state["anchor_mode"]
         else:                                        # adk web / character_forge
             seed, mode = _resolve_reference(state)
-            png = (state.get("_last_output_png") if mode == "latest"
-                   else state.get("character_ref_png"))
-            label = f"ref_pin → {mode} ({seed})"
+            png = (state.get("temp:_last_output_png") if mode == "latest"
+                   else state.get("temp:character_ref_png"))
+            if png is None:
+                # A new turn: the temp tier is gone, the artifact is not. The
+                # seed IS the artifact name, so read the bytes back off it.
+                png = await artifact_png(tool_context, seed)
+            label = f"ref_pin → {mode} ({seed})" + (" + bytes" if png else "  ·  no bytes")
         state["temp:active_reference"] = seed       # the tool reads this (seed)
         state["temp:active_reference_png"] = png    # the real image pin
         emit(type=TraceEventType.TOOL_CALL, hook="before_tool", label=label,
@@ -111,6 +116,12 @@ async def after_tool(tool, args: dict[str, Any], tool_context,
         state["look_history"] = history
         state["current_look"] = entry
         state["_last_output"] = tool_response["artifact"]  # feeds "latest" anchoring next turn
+        # ...and the bytes behind that name, so anchor_mode="latest" has something
+        # real to anchor to this turn. temp: — PNG bytes are not JSON and the
+        # session store is; before_tool reloads them from the artifact after that.
+        last_png = await artifact_png(tool_context, tool_response["artifact"])
+        if last_png is not None:
+            state["temp:_last_output_png"] = last_png
         # multiturn: show the state delta as a +/- on the outfit set; else the single-look label
         equipped = state.get("equipped")
         if equipped is not None:
