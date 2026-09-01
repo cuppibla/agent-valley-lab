@@ -5,8 +5,8 @@ description = "Agent 101 Live — one game, five weeks, one growing runtime"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.139.2",
-    "google-adk>=2.5.0",
-    "google-genai>=2.14.0",
+    "google-adk>=2.5.0,<3",
+    "google-genai>=2.14.0,<3",
     "pillow>=12.3.0",
     "pydantic>=2.7",
     "uvicorn>=0.51.0",

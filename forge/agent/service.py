@@ -189,6 +189,14 @@ def _decode(data_url_or_b64: str) -> bytes | None:
     """
     if not data_url_or_b64:
         return None
+    # "/" is in the base64 alphabet, so a PATH decodes happily into nonsense —
+    # "/proto/cats/cast-0.jpg" becomes 15 bytes and travels all the way to the image
+    # model before anyone objects. Anything that is not a data URL has to be long
+    # enough to plausibly BE an image.
+    if not data_url_or_b64.startswith("data:") and len(data_url_or_b64) < 100:
+        logging.getLogger(__name__).warning(
+            "reference is not an image — got %r", data_url_or_b64[:80])
+        return None
     raw = data_url_or_b64.split(",", 1)[-1]
     try:
         return _b64.b64decode(raw) or None

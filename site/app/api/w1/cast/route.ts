@@ -9,6 +9,8 @@
 // valley never breaks mid-demo.
 
 import { NextRequest, NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -16,7 +18,21 @@ export const maxDuration = 90;
 const AGENT_URL = process.env.VALLEY_AGENT_URL || "http://127.0.0.1:8100";
 
 // A recording of a real summon, for when the agent isn't running.
-const REPLAY = [{ id: "cast-0", src: "/proto/cats/cast-0.jpg" }];
+//
+// It has to be a data URL, not the /proto/cats/… path it is served from. Claiming
+// a replay familiar stores this `src` as canon, and every later /adorn hands canon
+// to the image model as bytes — base64-decoding a PATH yields 15 bytes of nonsense
+// and a bare `400 Provided image is not valid` from the far end of the stack.
+const REPLAY_FILE = ["public", "proto", "cats", "cast-0.jpg"];
+
+async function replayCandidates() {
+  try {
+    const b64 = (await readFile(path.join(process.cwd(), ...REPLAY_FILE))).toString("base64");
+    return [{ id: "cast-0", src: `data:image/jpeg;base64,${b64}` }];
+  } catch {
+    return [];   // better to offer nothing than something that cannot be dressed
+  }
+}
 
 function replayTrace() {
   const run = "cast-" + Math.round(Date.now() / 1000);
@@ -42,6 +58,7 @@ export async function POST(req: NextRequest) {
   } catch {
     /* service down → replay below */
   }
-  return NextResponse.json({ mode: "replay", candidates: REPLAY, events: replayTrace(),
+  return NextResponse.json({ mode: "replay", candidates: await replayCandidates(),
+    events: replayTrace(),
     note: "agent not running — start it with: bash valley.sh" });
 }

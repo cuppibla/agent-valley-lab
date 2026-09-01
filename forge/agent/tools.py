@@ -191,6 +191,13 @@ async def generate_look(form: str, tool_context: ToolContext) -> dict:
     # the before_tool callback pinned the resolved reference here (seed + real image bytes):
     reference_seed = state.get("temp:active_reference") or state.get("character_ref", "unpinned")
     reference_png = state.get("temp:active_reference_png")
+    # Dressing without a reference is not a smaller version of dressing — it is a
+    # SUMMON, and `render` would happily draw a brand-new animal. A familiar whose
+    # canon never arrived (an old save holding a replay path, say) has to stop here.
+    if not reference_png:
+        raise ValueError(
+            "no reference image to work from — this familiar's canon never arrived. "
+            "Press \u21ba start over, or summon again.")
     instruction = _outfit_instruction(state)  # multiturn outfit prompt, or None for single-form
     png, meta = render_look(sheet=sheet, form=form, reference_seed=reference_seed,
                             reference_png=reference_png, instruction=instruction)

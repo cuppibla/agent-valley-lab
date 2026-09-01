@@ -22,8 +22,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.139.2" },
-    { name = "google-adk", specifier = ">=2.5.0" },
-    { name = "google-genai", specifier = ">=2.14.0" },
+    { name = "google-adk", specifier = ">=2.5.0,<3" },
+    { name = "google-genai", specifier = ">=2.14.0,<3" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "uvicorn", specifier = ">=0.51.0" },
