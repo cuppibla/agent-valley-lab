@@ -10,6 +10,7 @@ import DialogueBox from "@/components/DialogueBox";
 import SaveChip from "@/components/SaveChip";
 import DistrictNav from "@/components/DistrictNav";
 import { getSave, updateSave } from "@/lib/save";
+import { loadSessionId, rememberSessionId } from "@/lib/session";
 
 // Suggestions, not commands. Tapping one WRITES A SENTENCE into the request box —
 // the traveler sees the words before they are sent, and can change them. That is the
@@ -47,9 +48,13 @@ export default function Grove() {
   useEffect(() => {
     const s = getSave();
     if (s?.origin && s.name) {
-      // A restored familiar has no live agent session — mint one. The dresser works
-      // from the reference image we send, so it does not need the old session's sheet.
-      setSessionId(`s-restored-${Math.random().toString(36).slice(2, 10)}`);
+      // A RELOAD is not a fresh start. Chapter 3 asks the traveler to reload and
+      // watch the state survive — so the agent session has to survive it too, or
+      // the next dress-up turn silently starts a new one and the forge forgets
+      // the turn before it. Reuse the id this tab already has; only a genuinely
+      // restored familiar (new tab, old save) needs a minted one.
+      setSessionId(rememberSessionId(
+        loadSessionId() || `s-restored-${Math.random().toString(36).slice(2, 10)}`));
       setClaimed({ name: s.name, src: s.origin });
       setHero(s.portrait || s.origin);
       setEquipped(s.outfit || []);
@@ -64,7 +69,7 @@ export default function Grove() {
 
   function claim(n: string, src: string, id: string, sid: string) {
     setClaimed({ name: n, src });
-    setSessionId(sid); setCanonId(id); setRefId(id); setRequest("");
+    setSessionId(rememberSessionId(sid)); setCanonId(id); setRefId(id); setRequest("");
     setHero(src);
     setEquipped([]); setHistory([]); setEvents([]); setErr(null); setFinished(false);
     setRestored(false);
@@ -123,8 +128,11 @@ export default function Grove() {
       });
       const res = await r.json();
       // The service mints one when ours is blank (a restore, or a summon that never
-      // handed one back). Adopt it, so the next turn lands in the same session.
-      if (res.session_id && res.session_id !== sessionId) setSessionId(res.session_id);
+      // handed one back). Adopt it, so the next turn lands in the same session —
+      // and park it in sessionStorage so a reload lands there too.
+      if (res.session_id && res.session_id !== sessionId) {
+        setSessionId(rememberSessionId(res.session_id));
+      }
       if (res.image) {
         setHero(res.image);
         setEquipped(outfit);
