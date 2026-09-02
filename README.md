@@ -11,7 +11,7 @@ dress it up, and watch the state it changed survive a page reload. You edit
 lab is still a draft and lives elsewhere; everything you need to run the thing is
 in this repo.
 
-![Agent Valley](docs/valley.png)
+![Agent Valley](docs/valley.jpg)
 
 📕 **The slides:** [Agent 101 — ep1](docs/agent-101-ep1.pdf) (29 pages) — the deck
 that goes with this lab, from the Agent 101 Live week-one session.

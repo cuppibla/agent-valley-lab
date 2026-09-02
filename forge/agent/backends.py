@@ -36,7 +36,11 @@ def _style_refs() -> list[bytes]:
     if _STYLE_REF_CACHE is None:
         out: list[bytes] = []
         if _STYLE_REF_DIR.exists():
-            for p in sorted(_STYLE_REF_DIR.glob("*.png")):
+            # jpeg, because these are 1024px art: the container costs 4.4 MB as PNG
+            # and 0.3 MB as JPEG with no visible change in what the model copies.
+            # Downscaling them, though, DOES change it — 512 refs come back saturated
+            # and hard-lit instead of pastel. Keep the pixels, drop the container.
+            for p in sorted([*_STYLE_REF_DIR.glob("*.png"), *_STYLE_REF_DIR.glob("*.jpg")]):
                 try:
                     out.append(p.read_bytes())
                 except OSError:
